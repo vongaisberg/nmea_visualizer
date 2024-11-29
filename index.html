@@ -127,24 +127,36 @@ Copy code
         });
 
         // Initialize Mapbox layers and sources on map load
-        map.on('load', () => {
+        map.on('load', async () => {
+            // Add a scale to the map
             map.addControl(new mapboxgl.ScaleControl());
+
+            // Load NMEA file
+            nmeaFile = await fetch('egypt.nmea')
+                .then(response => {
+                    return response.text();
+                })
+                .catch(error => {
+                    document.getElementById('status').innerHTML = `
+                        <small>Error loading NMEA file: ${error.message}</small>
+                    `;
+                });
+            console.log('NMEA file loaded:', nmeaFile.length, 'characters');
+            // Extract the first NMEA sentence to start flying
             lineData = firstNMEA(nmeaFile);
 
+            if (lineData.geometry.coordinates.length > 0) {
+                // Fly to the first point
+                map.flyTo({ center: lineData.geometry.coordinates[0], zoom: 8.5, pitch: 0 });
+            }
             // Add empty source for the line
             map.addSource('line', {
                 type: 'geojson',
                 data: lineData
             });
-            // Fly to the start of the line when the map loads
-            if (nmeaFile) {
-                console.log('NMEA file loaded:', nmeaFile.length, 'characters');
-                if (lineData.geometry.coordinates.length > 0) {
-                    map.flyTo({ center: lineData.geometry.coordinates[0], zoom: 8.5, pitch: 0 });
-                }
-                // Render the data while flying
-                render();
-            }
+            // Render the data while flying
+            render();
+
             // Add background line layer
             map.addLayer({
                 id: 'line-background',
@@ -238,11 +250,7 @@ Copy code
 
         });
 
-        // Fetch and load NMEA data
-        fetch('egypt.nmea')
-            .then(response => response.text())
-            .then(data => nmeaFile = data)
-            .catch(error => console.error('Error fetching NMEA file:', error));
+
 
     </script>
 </body>
