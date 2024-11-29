@@ -131,16 +131,25 @@ Copy code
             // Add a scale to the map
             map.addControl(new mapboxgl.ScaleControl());
 
+            //Get file name from url
+            const urlParams = new URLSearchParams(window.location.search);
+            const src = urlParams.get('src');
+            if(!src) {
+                document.getElementById('status').innerHTML = `
+                    <small>No NMEA file specified</small>
+                `;
+                return;
+            }
             // Load NMEA file
-            nmeaFile = await fetch('egypt.nmea')
+            nmeaFile = await fetch(src)
                 .then(response => {
+                    if (!response.ok) {
+                        document.getElementById('status').innerHTML = `
+                            <small>Error loading NMEA file: ${response.statusText}</small>
+                        `;
+                    }
                     return response.text();
                 })
-                .catch(error => {
-                    document.getElementById('status').innerHTML = `
-                        <small>Error loading NMEA file: ${error.message}</small>
-                    `;
-                });
             console.log('NMEA file loaded:', nmeaFile.length, 'characters');
             // Extract the first NMEA sentence to start flying
             lineData = firstNMEA(nmeaFile);
