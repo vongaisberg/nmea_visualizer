@@ -1,0 +1,250 @@
+Error Handling: Added basic error handling for fetch calls.
+html
+Copy code
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <title>NMEA Visualizer</title>
+
+    <!-- Mapbox CSS and JS -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.js"></script>
+
+    <!-- Load custom NMEA logic -->
+    <script src="/load_nmea.js" defer></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            overflow-y: scroll;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .map-container {
+            flex: 0 0 80%;
+            position: relative;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls-container {
+            flex: 0 0 auto;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .controls-container h2,
+        .controls-container h3 {
+            margin: 0 0 10px;
+        }
+
+        #nmea {
+            width: 100%;
+        }
+
+        #submit {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        #submit:hover {
+            background-color: #45a049;
+        }
+
+        input[type="number"] {
+            width: 5em;
+            margin: 8px 0;
+        }
+
+        #status {
+            padding: 10px 20px;
+            background: #f5f5f5;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Map Container -->
+        <div class="map-container">
+            <div id="map"></div>
+        </div>
+
+        <!-- Statistics -->
+        <div id="status">
+            <small>Loading...</small>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls-container">
+            <h2>NMEA Visualizer</h2>
+            <div id="parameters">
+                <div id="mooring">
+                    Detect the ship as moored if it stays within
+                    <input type="number" id="mooring_threshold" name="mooring_threshold" value="10"> meters for more
+                    than
+                    <input type="number" id="mooring_time" name="mooring_time" value="10"> minutes
+                </div>
+            </div>
+            <button id="submit">Visualize</button>
+        </div>
+    </div>
+
+    <script>
+        // Mapbox Access Token
+        mapboxgl.accessToken = 'pk.eyJ1IjoibmluYW5vdW4iLCJhIjoiY2pjdHBoZGlzMnV4dDJxcGc5azJkbWRiYSJ9.o4dZRrdHcgVEKCveOXG1YQ'; // Placeholder token
+
+        let nmeaFile = ''; // Placeholder for NMEA file content
+        let mapMarkers = [];
+        let lineData; // Stores GeoJSON data for the line
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [8.403, 49], // Initial center point
+            zoom: 12,
+            pitch: 45,
+        });
+
+        // Initialize Mapbox layers and sources on map load
+        map.on('load', () => {
+            map.addControl(new mapboxgl.ScaleControl());
+            lineData = firstNMEA(nmeaFile);
+
+            // Add empty source for the line
+            map.addSource('line', {
+                type: 'geojson',
+                data: lineData
+            });
+            // Fly to the start of the line when the map loads
+            if (nmeaFile) {
+                console.log('NMEA file loaded:', nmeaFile.length, 'characters');
+                if (lineData.geometry.coordinates.length > 0) {
+                    map.flyTo({ center: lineData.geometry.coordinates[0], zoom: 8.5, pitch: 0 });
+                }
+                // Render the data while flying
+                render();
+            }
+            // Add background line layer
+            map.addLayer({
+                id: 'line-background',
+                type: 'line',
+                source: 'line',
+                paint: {
+                    'line-color': 'yellow',
+                    'line-width': 6,
+                    'line-opacity': 0.4
+                }
+            });
+
+            // Add dashed line layer for animation
+            map.addLayer({
+                id: 'line-dashed',
+                type: 'line',
+                source: 'line',
+                paint: {
+                    'line-color': 'yellow',
+                    'line-width': 6,
+                    'line-dasharray': [0, 4, 3]
+                }
+            });
+
+            animateDashArray(0);
+        });
+
+        // Dash array animation sequence
+        const dashArraySequence = [
+            [0, 4, 3], [0.25, 4, 2.75], [0.5, 4, 2.5], [0.75, 4, 2.25],
+            [1, 4, 2], [1.25, 4, 1.75], [1.5, 4, 1.5], [1.75, 4, 1.25],
+            [2, 4, 1], [2.25, 4, 0.75], [2.5, 4, 0.5], [2.75, 4, 0.25],
+            [3, 4, 0], [0, 0.25, 3, 3.75]
+        ];
+
+        let step = 0;
+        const animateDashArray = (timestamp) => {
+            const newStep = Math.floor((timestamp / 70) % dashArraySequence.length);
+            if (newStep !== step) {
+                map.setPaintProperty('line-dashed', 'line-dasharray', dashArraySequence[newStep]);
+                step = newStep;
+            }
+            requestAnimationFrame(animateDashArray);
+        };
+
+        // Render data on the map
+        const render = () => {
+            // Clear existing markers
+            mapMarkers.forEach(marker => marker.remove());
+            mapMarkers = [];
+
+            const mooringDistance = document.getElementById('mooring_threshold').value;
+            const mooringTime = document.getElementById('mooring_time').value;
+
+            const [line, markers, stats] = loadNMEA(nmeaFile, mooringDistance, mooringTime);
+
+            // Update statistics
+            document.getElementById('status').innerHTML = `
+                <small>Loaded ${stats.totalPoints.toLocaleString()} points, rendered ${stats.renderedPoints.toLocaleString()} points</small>
+            `;
+
+            // Update line data
+            lineData = line;
+            map.getSource('line').setData(line);
+
+            // Add markers
+            markers.forEach(([lon, lat, startTime, stopTime]) => {
+                const startTimeFormatted = new Date(startTime).toLocaleString('de-DE', { timeZone: 'UTC' }) + ' UTC';
+                const stopTimeFormatted = stopTime ? new Date(stopTime).toLocaleString('de-DE', { timeZone: 'UTC' }) + ' UTC' : 'N/A';
+
+                const marker = new mapboxgl.Marker({ color: '#A01010' })
+                    .setLngLat([lon, lat])
+                    .setPopup(new mapboxgl.Popup().setHTML(`<h3>${startTimeFormatted}<br>${stopTimeFormatted}</h3>`))
+                    .addTo(map);
+
+                mapMarkers.push(marker);
+            });
+        };
+
+        // Handle the "Visualize" button click
+        document.getElementById('submit').addEventListener('click', () => {
+            if (lineData) {
+                // Zoom out slightly
+                map.jumpTo({ center: lineData.geometry.coordinates[0], zoom: 8, pitch: 0 });
+            }
+            render();
+            // And fly back in
+            map.flyTo({ center: lineData.geometry.coordinates[0], zoom: 8.5, pitch: 0 });
+
+
+
+        });
+
+        // Fetch and load NMEA data
+        fetch('/egypt.nmea')
+            .then(response => response.text())
+            .then(data => nmeaFile = data)
+            .catch(error => console.error('Error fetching NMEA file:', error));
+
+    </script>
+</body>
+
+</html>
