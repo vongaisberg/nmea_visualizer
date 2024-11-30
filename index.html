@@ -150,7 +150,6 @@
             console.log('NMEA file loaded:', nmeaFile.length, 'characters');
             // Extract the first NMEA sentence to start flying
             lineData = firstNMEA(nmeaFile);
-
             if (lineData.geometry.coordinates.length > 0) {
                 // Fly to the first point
                 map.flyTo({ center: lineData.geometry.coordinates[0], zoom: 8.5, pitch: 0 });
@@ -233,12 +232,13 @@
 
             // Add markers
             markers.forEach(([lon, lat, startTime, stopTime]) => {
+                const mooringCoordinates = printCoordinates(lat, lon);
                 const startTimeFormatted = new Date(startTime).toLocaleString('de-DE', { timeZone: 'UTC' }) + ' UTC';
                 const stopTimeFormatted = stopTime ? new Date(stopTime).toLocaleString('de-DE', { timeZone: 'UTC' }) + ' UTC' : 'N/A';
 
                 const marker = new mapboxgl.Marker({ color: '#A01010' })
                     .setLngLat([lon, lat])
-                    .setPopup(new mapboxgl.Popup().setHTML(`<h3>${startTimeFormatted}<br>${stopTimeFormatted}</h3>`))
+                    .setPopup(new mapboxgl.Popup().setHTML(`<h3>${mooringCoordinates}<br>${startTimeFormatted}<br>${stopTimeFormatted}</h3>`))
                     .addTo(map);
 
                 mapMarkers.push(marker);

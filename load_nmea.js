@@ -15,6 +15,15 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+// Print float coordinates human readably
+const printCoordinates = (lat, lon) => {
+    const latDir = lat < 0 ? 'S' : 'N';
+    const lonDir = lon < 0 ? 'W' : 'E';
+    const latStr = `${Math.abs(lat).toFixed(6)}° ${latDir}`;
+    const lonStr = `${Math.abs(lon).toFixed(6)}° ${lonDir}`;
+    return `${latStr}, ${lonStr}`;
+}
+
 // Extract the first GeoJSON feature from an NMEA file
 const firstNMEA = (nmea) => {
     const startTime = Date.now();
